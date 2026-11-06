@@ -47,7 +47,7 @@ test('PTC dispatch missing its root fails closed when the root has an unresolved
   assert.equal(state.intents[0].status, 'PENDING')
   assert.equal(state.dispatches.length, 0)
 })
-test('registry restores a v4 checkpoint by rebuilding the original log under v5', async () => {
+test('registry restores a v4 checkpoint by rebuilding the original log under v6', async () => {
   const ctx = new Context()
   try {
     await ctx.plugin(SessionProjectionRegistry)
@@ -63,7 +63,7 @@ test('registry restores a v4 checkpoint by rebuilding the original log under v5'
     assert.equal(registry.restoreFloor(checkpoint), 0)
     assert.throws(() => registry.restore(checkpoint, events.slice(1), 1, header, 0), /re-read from seq 0/)
     const restored = registry.restore(checkpoint, events, 0, header, 0).checkpoint[projection.key]
-    assert.equal(restored.ver, 5)
+    assert.equal(restored.ver, 6)
     assert.equal(restored.val.failure, null)
     assert.equal(restored.val.dispatches.length, 0)
     assert.equal(restored.val.turn, 1)
@@ -104,7 +104,7 @@ test('every PTC parent typed negative qualifies the whole chain, UNKNOWN never b
     assert.equal(chainQualification('leaf', 'root', [leaf, parent]), expected)
     assert.equal(chainSucceeded('leaf', 'root', [leaf, parent]), false)
   }
-  assert.equal(projection.stateVersion, 5)
+  assert.equal(projection.stateVersion, 6)
 })
 test('oversized result is explicitly UNKNOWN, typed false/failure cannot pass as execution evidence', () => {
   assert.equal(outcomeOfContent([{ type: 'text', text: 'x'.repeat(32769) }]), 'UNKNOWN')
@@ -114,6 +114,30 @@ test('oversized result is explicitly UNKNOWN, typed false/failure cannot pass as
   assert.equal(outcomeOfContent([{ type: 'text', text: '{"ok":false}' }, { type: 'text', text: '{"status":"UNKNOWN"}' }]), 'UNKNOWN')
   assert.equal(outcomeOfContent([{ type: 'text', text: '{"ok":false,"status":"NOT_RUN"}' }]), 'UNKNOWN')
   assert.equal(outcomeOfContent([{ type: 'text', text: '{"goalVerification":{"status":"FAIL"},"status":"UNKNOWN"}' }]), 'UNKNOWN')
+})
+test('owned Bash exit status overrides delivery success for root and PTC tool results', () => {
+  for (const nested of [false, true]) {
+    for (const exitCode of [0, 1]) {
+      let state = initialState({ id: 'own' })
+      const add = (type, data) => { state = applyEvent(state, { seq: state.lastSeq + 1, type, data }) }
+      const rootCallId = 'root'
+      const callId = nested ? 'child' : rootCallId
+      const content = [{ type: 'text', text: 'stdout can contain [exit code: 123]' }]
+      add('tool/call', { callId: rootCallId, name: nested ? 'run_code' : 'bash' })
+      const settlement = { kind: 'bash', status: 'completed', producerReported: true, toolCall: { rootCallId, callId } }
+      add('job/settled', { ...settlement, owner: 'other', detail: 'exit code: 99' })
+      add('job/settled', { ...settlement, owner: 'own', detail: `exit code: ${exitCode}` })
+      if (nested) add('tool/ptc-dispatch', { subCallId: callId, parentCallId: rootCallId,
+        rootCallId, name: 'bash', isError: false, content })
+      add('tool/result', { message: { source: { callId: rootCallId }, isError: false, content } })
+      assert.equal(state.failure, null)
+      assert.equal(state.proofs.length, 1)
+      assert.equal(state.proofs[0].tool, 'bash')
+      assert.equal(state.proofs[0].qualification, exitCode === 0 ? 'SUCCESS' : 'FAILED')
+      assert.equal(state.proofs[0].ownOutcome, exitCode === 0 ? 'UNVERIFIED' : 'FAIL')
+      assert.deepEqual(state.bashFailures, [])
+    }
+  }
 })
 test('intent with another session ID fails closed and no graph success is manufactured', () => {
   let state = initialState({ id: 'own' })

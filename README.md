@@ -18,7 +18,7 @@ npm test
 npm run pack:bundle
 ```
 
-`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.2.2.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
+`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.2.3.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
 
 ## 安装到独立 Web profile
 
@@ -26,7 +26,7 @@ npm run pack:bundle
 
 ```sh
 dsh --profile bettertaskgraphs --from-default-profile web --dump-config
-dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.2.2.tgz"
+dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.2.3.tgz"
 dsh --profile bettertaskgraphs --dump-config
 dsh --profile bettertaskgraphs
 ```

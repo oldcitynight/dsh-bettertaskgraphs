@@ -75,7 +75,6 @@ export function createClientPlugin(React, z, createRemoteContribution, graphPres
     .tg-badge[data-state=failed]{background:#d452522f}
     .tg-current,.tg-conditions{font-size:12px;line-height:1.4;overflow-wrap:anywhere}.tg-current{margin-bottom:7px}.tg-current .tg-badge{margin-inline-start:6px}
     .tg-conditions{list-style:decimal;margin:4px 0 0;padding-inline-start:1.7em}.tg-conditions li+li{margin-top:4px}.tg-no-conditions{margin:4px 0 0;color:var(--tg-muted);font-size:12px}
-    .tg-error-only{padding:6px 9px;font-size:12px}
 
     .tg-viewer{
       --tg-panel:var(--dsw-alias-bg-base,Canvas);
@@ -297,10 +296,7 @@ export function createClientPlugin(React, z, createRemoteContribution, graphPres
         void refreshStatus()
         return () => { controller.abort(); clearTimeout(timer) }
       }, [canRead, opened, running, sessionId, refreshCount])
-      if (!canRead || !opened || result?.sessionId !== sessionId) return null
-      if (!result.graph) return result.failed ? h('section', { className: 'tg-dock tg-error-only', 'aria-label': t('title') },
-        h('style', null, styles), h('span', { role: 'status' }, t('unavailable')), ' ',
-        h('button', { type: 'button', onClick: refresh }, t('retry'))) : null
+      if (!canRead || !opened || result?.sessionId !== sessionId || !result.graph) return null
       return h(GraphPanel, { key: sessionId, graph: result.graph, t, busy: result.busy, failed: result.failed, refresh })
     }
   }

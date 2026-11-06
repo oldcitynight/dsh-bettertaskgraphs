@@ -12,6 +12,7 @@ const bounded = n => z.string().min(1).max(n)
 const hex = z.string().regex(/^[a-f0-9]{64}$/)
 const seq = z.number().int().nonnegative()
 const workSchema = z.object({ rootCallId: bounded(512), callSeq: seq, rootResultSeq: seq.nullable(), eventDigest: hex }).strict()
+const bashFailureSchema = z.object({ rootCallId: bounded(512), callId: bounded(512) }).strict()
 const factSchema = z.object({ seq, callId: bounded(512), tool: bounded(300), isError: z.boolean(),
   outcome: z.enum(['UNVERIFIED', 'FAIL', 'NOT_RUN', 'UNKNOWN']) }).strict()
 const intentSchema = z.object({ version: z.literal(4), operationId: bounded(80), callId: bounded(512),
@@ -30,13 +31,14 @@ const pendingSchema = z.object({ intentSeq: seq, data: intentSchema,
 export const stateSchema = z.object({ sessionId: bounded(512), ownFrom: seq, turn: seq, lastSeq: z.number().int().min(-1),
   workStarted: seq, workExecuted: seq, uncertainties: z.array(workSchema).max(1024), acknowledgedWork: z.array(workSchema).max(1024),
   calls: z.record(z.string(), z.object({ tool: bounded(300), turn: seq, seq, eventDigest: hex }).strict()),
+  bashFailures: z.array(bashFailureSchema).max(256),
   dispatches: z.array(dispatchSchema).max(256), intents: z.array(pendingSchema).max(1024),
   proofs: z.array(proofSchema).max(MAX_PROOFS), receipts: z.array(z.object({ operationId: bounded(80), seq,
     status: z.enum(['COMMITTED', 'ABORTED']), graphRevision: seq, graphChecksum: hex.nullable(), eventDigest: hex }).strict()).max(1024), failure: z.string().nullable() }).strict()
 export function initialState(header, inheritedEventCount = 0) {
   return { sessionId: header.id, ownFrom: inheritedEventCount, turn: 0, lastSeq: -1, workStarted: 0, workExecuted: 0,
     uncertainties: [], acknowledgedWork: [],
-    calls: {}, dispatches: [], intents: [], proofs: [], receipts: [], failure: null }
+    calls: {}, bashFailures: [], dispatches: [], intents: [], proofs: [], receipts: [], failure: null }
 }
 export function outcomeOfContent(content = []) {
   const outcomes = new Set()
@@ -54,6 +56,11 @@ export function outcomeOfContent(content = []) {
   }
   // A first FAIL/NOT_RUN block may not hide a later UNKNOWN/contradiction.
   return outcomes.has('UNKNOWN') || outcomes.size > 1 ? 'UNKNOWN' : [...outcomes][0] ?? 'UNVERIFIED'
+}
+function toolOutcome(state, tool, rootCallId, callId, content) {
+  const outcome = outcomeOfContent(content)
+  if (tool !== 'bash' || !state.bashFailures.some(row => row.rootCallId === rootCallId && row.callId === callId)) return outcome
+  return outcome === 'UNKNOWN' || outcome === 'NOT_RUN' ? 'UNKNOWN' : 'FAIL'
 }
 export function chainQualification(start, root, dispatches) {
   let child = start
@@ -94,7 +101,7 @@ export function applyEvent(state, event) {
     if (event.seq < state.ownFrom) return state // Fork parents cannot authorize a child's graph.
     if (event.type.startsWith('plugin:project-transaction-graph/') && ![INTENT, RECEIPT, RECOVERY].includes(event.type))
       throw new GraphError('LEGACY_GRAPH_REQUIRES_EXPLICIT_MIGRATION')
-    if (!['turn/start', 'turn/end', 'tool/call', 'tool/ptc-dispatch', 'tool/result', INTENT, RECEIPT, RECOVERY].includes(event.type)) return state
+    if (!['turn/start', 'turn/end', 'tool/call', 'tool/ptc-dispatch', 'tool/result', 'job/settled', INTENT, RECEIPT, RECOVERY].includes(event.type)) return state
     const d = event.data
     let next = { ...state, lastSeq: event.seq }
     if (event.type === 'turn/start') return { ...next, turn: d.turn }
@@ -126,6 +133,18 @@ export function applyEvent(state, event) {
         rootResultSeq: event.type === RECOVERY ? event.seq : null, rootResultDigest: event.type === RECOVERY ? digest(event) : null,
         workStartedAtRoot: event.type === RECOVERY ? state.workStarted : null, workExecutedAtRoot: event.type === RECOVERY ? state.workExecuted : null }] }
     }
+    if (event.type === 'job/settled') {
+      const origin = d.toolCall
+      if (d.kind !== 'bash' || d.owner !== state.sessionId || !origin || !Object.hasOwn(state.calls, origin.rootCallId)
+          || d.status !== 'completed' || d.producerReported !== true) return next
+      // Native Bash reports a nonzero exit in the owned job log even when its tool message is not an error.
+      const exit = /^exit code: (-?\d+)(?:;|$)/.exec(d.detail ?? '')
+      if (!exit || Number(exit[1]) === 0) return next
+      const failure = bashFailureSchema.parse({ rootCallId: origin.rootCallId, callId: origin.callId })
+      if (state.bashFailures.some(row => row.rootCallId === failure.rootCallId && row.callId === failure.callId)) return next
+      if (state.bashFailures.length >= 256) throw new GraphError('BASH_FAILURE_RECORD_LIMIT')
+      return { ...next, bashFailures: [...state.bashFailures, failure] }
+    }
     if (event.type === 'tool/ptc-dispatch') {
       const rootCallId = d.rootCallId ?? d.parentCallId
       if (!Object.hasOwn(state.calls, rootCallId)) {
@@ -136,7 +155,7 @@ export function applyEvent(state, event) {
       }
       const dispatch = dispatchSchema.parse({ seq: event.seq, subCallId: d.subCallId, parentCallId: d.parentCallId,
         rootCallId, tool: d.name, isError: d.isError,
-        outcome: outcomeOfContent(d.content), eventDigest: digest(event), turn: state.turn })
+        outcome: toolOutcome(state, d.name, rootCallId, d.subCallId, d.content), eventDigest: digest(event), turn: state.turn })
       if (state.dispatches.some(row => row.subCallId === dispatch.subCallId && row.rootCallId === dispatch.rootCallId)
           || state.dispatches.length >= 256) throw new GraphError('PTC_DISPATCH_REPLAY_OR_LIMIT')
       return { ...next, workStarted: state.workStarted + (!internal(d.name) && d.name !== 'run_code' ? 1 : 0),
@@ -145,9 +164,6 @@ export function applyEvent(state, event) {
     if (event.type === 'tool/result') {
       const root = d.message.source.callId, success = d.message.isError !== true // Optional false in the published ToolResultMessage API.
       const syntheticUnknown = [TOOL_OUTCOME_UNKNOWN, TOOL_NOT_STARTED].includes(d.error?.code)
-      const rootOutcome = outcomeOfContent(d.message.content)
-      const rootQualification = syntheticUnknown || rootOutcome === 'UNKNOWN' ? 'UNKNOWN'
-        : !success || ['FAIL', 'NOT_RUN'].includes(rootOutcome) ? 'FAILED' : 'SUCCESS'
       const sources = state.dispatches.filter(row => row.rootCallId === root)
       const call = state.calls[root]
       if (!call) {
@@ -158,6 +174,9 @@ export function applyEvent(state, event) {
         return next
       }
       const standaloneCode = call.tool === 'run_code' && !sources.length
+      const rootOutcome = toolOutcome(state, call.tool, root, root, d.message.content)
+      const rootQualification = syntheticUnknown || rootOutcome === 'UNKNOWN' ? 'UNKNOWN'
+        : !success || ['FAIL', 'NOT_RUN'].includes(rootOutcome) ? 'FAILED' : 'SUCCESS'
       const leafCode = sources.filter(row => row.tool === 'run_code' && !sources.some(child => child.parentCallId === row.subCallId))
       const workStarted = state.workStarted + (standaloneCode ? 1 : 0) + leafCode.length
       const executed = sources.filter(row => !internal(row.tool) && (row.tool !== 'run_code' || leafCode.includes(row)) && !['NOT_RUN', 'UNKNOWN'].includes(row.outcome)).length
@@ -189,6 +208,7 @@ export function applyEvent(state, event) {
         if (uncertainties.length > 1024) throw new GraphError('UNRESOLVED_WORK_LIMIT')
       }
       return { ...next, calls, intents, workStarted, workExecuted, uncertainties, dispatches: state.dispatches.filter(row => row.rootCallId !== root),
+        bashFailures: state.bashFailures.filter(row => row.rootCallId !== root),
         proofs: [...state.proofs, ...proofs].slice(-MAX_PROOFS) }
     }
     if (event.type === RECEIPT) {
@@ -202,4 +222,4 @@ export function applyEvent(state, event) {
     return next
   } catch (error) { return { ...state, failure: `Transaction projection failed at ${event.seq}: ${error.message}` } }
 }
-export const projection = { key: KEY, stateVersion: 5, stateSchema, init: initialState, apply: applyEvent }
+export const projection = { key: KEY, stateVersion: 6, stateSchema, init: initialState, apply: applyEvent }

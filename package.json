@@ -1,6 +1,6 @@
 {
   "name": "dsh-bettertaskgraphs",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Transactional task graphs with a conversation panel for DeepSeek Harness",
   "license": "GPL-3.0-only",
   "keywords": ["dsh", "deepseek-harness", "cordis", "task-graph"],
