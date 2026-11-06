@@ -1,0 +1,5 @@
+- insert:
+    - id: dsh-bettertaskgraphs
+      name: dsh-bettertaskgraphs
+      config:
+        enableSwitch: false
