@@ -26,8 +26,8 @@ function regularBoundedJson(file, maximum = LIMITS.bytes) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error }
   try {
     const before = fs.fstatSync(fd)
-    if (!before.isFile() || before.size > maximum || before.size < 1) reject('INVALID_STORE_FILE')
-    const buffer = Buffer.alloc(Math.min(before.size + 1, maximum + 1))
+    if (!before.isFile() || maximum !== null && before.size > maximum || before.size < 1) reject('INVALID_STORE_FILE')
+    const buffer = Buffer.alloc(maximum === null ? before.size + 1 : Math.min(before.size + 1, maximum + 1))
     let count = 0
     while (count < buffer.length) {
       const read = fs.readSync(fd, buffer, count, buffer.length - count, null)
@@ -60,8 +60,8 @@ export class MemoryGraphStore {
 export class FileGraphStore {
   constructor({ projectRoot, directory, fileName = 'transaction-graph.json', maximumBytes = LIMITS.bytes,
     validator = validateDocument, updateValidator = checkNext, readOnly = false }) {
-    if (!/^[a-z][a-z0-9.-]{0,63}$/.test(fileName) || !Number.isSafeInteger(maximumBytes)
-        || maximumBytes < 1 || maximumBytes > 12 * 1024 * 1024 || typeof validator !== 'function' || typeof updateValidator !== 'function') reject('INVALID_STORE_POLICY')
+    if (!/^[a-z][a-z0-9.-]{0,63}$/.test(fileName) || maximumBytes !== null && (!Number.isSafeInteger(maximumBytes)
+        || maximumBytes < 1 || maximumBytes > 12 * 1024 * 1024) || typeof validator !== 'function' || typeof updateValidator !== 'function') reject('INVALID_STORE_POLICY')
     this.maximumBytes = maximumBytes; this.validator = validator; this.updateValidator = updateValidator
     this.readOnly = readOnly
     if (typeof projectRoot !== 'string' || typeof directory !== 'string'
@@ -126,7 +126,7 @@ export class FileGraphStore {
       this.validator(next)
       this.updateValidator(previous, next)
       const content = JSON.stringify(next) + '\n'
-      if (Buffer.byteLength(content) > this.maximumBytes) reject('STORE_BYTE_LIMIT')
+      if (this.maximumBytes !== null && Buffer.byteLength(content) > this.maximumBytes) reject('STORE_BYTE_LIMIT')
       temporary = path.join(this.directory, '.transaction-graph-' + randomUUID() + '.tmp')
       const fd = fs.openSync(temporary, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600)
       try { temporaryIdentity = fs.fstatSync(fd); fs.writeFileSync(fd, content); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }

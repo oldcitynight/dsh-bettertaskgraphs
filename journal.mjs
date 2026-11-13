@@ -27,7 +27,7 @@ export function validateJournal(value, binding) {
         || (row.graphChecksum !== null && !hex(row.graphChecksum)) || !integer(row.resultSeq)
         || (row.reason !== null && (typeof row.reason !== 'string' || row.reason.length > 1200))
         || !hex(row.claimDigest) || !hex(row.candidateChecksum) || !integer(row.intentSeq) || !integer(row.expectedGraphRevision)
-        || !['create', 'begin', 'finish', 'skip', 'reconcile'].includes(row.operation)
+        || !['create', 'begin', 'finish', 'skip', 'reconcile', 'revise'].includes(row.operation)
         || !Array.isArray(row.evidenceDigests) || row.evidenceDigests.length > 32 || row.evidenceDigests.some(x => !hex(x)))
       fail('JOURNAL_CLAIM_INVALID')
     operations.add(row.operationId)
@@ -45,7 +45,7 @@ export function validateJournal(value, binding) {
       'owner', 'bindingDigest', 'expectedGraphRevision', 'candidate', 'resolvedEvidence', 'intentSeq', 'claimDigest', 'clearedWork'])
         || operations.has(p.operationId) || !hex(p.payloadHash) || !hex(p.bindingDigest) || !hex(p.claimDigest)
         || claimDigest(p) !== p.claimDigest || p.bindingDigest !== digest(binding) || p.sessionId !== binding.sessionId
-        || !['create', 'begin', 'finish', 'skip', 'reconcile'].includes(p.operation) || !integer(p.turn)
+        || !['create', 'begin', 'finish', 'skip', 'reconcile', 'revise'].includes(p.operation) || !integer(p.turn)
         || p.expectedGraphRevision !== (value.document?.revision ?? 0) || (p.intentSeq !== null && !integer(p.intentSeq))
         || !Array.isArray(p.resolvedEvidence) || p.resolvedEvidence.length > 32 || !Array.isArray(p.clearedWork) || p.clearedWork.length > 1024
         || p.clearedWork.some(row => !fields(row, ['rootCallId', 'callSeq', 'rootResultSeq', 'eventDigest'])

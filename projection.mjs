@@ -17,7 +17,7 @@ const factSchema = z.object({ seq, callId: bounded(512), tool: bounded(300), isE
   outcome: z.enum(['UNVERIFIED', 'FAIL', 'NOT_RUN', 'UNKNOWN']) }).strict()
 const intentSchema = z.object({ version: z.literal(4), operationId: bounded(80), callId: bounded(512),
   rootCallId: bounded(512), turn: seq, sessionId: bounded(512), bindingDigest: hex, claimDigest: hex,
-  operation: z.enum(['create', 'begin', 'finish', 'skip', 'reconcile']), expectedGraphRevision: seq, candidateChecksum: hex,
+  operation: z.enum(['create', 'begin', 'finish', 'skip', 'reconcile', 'revise']), expectedGraphRevision: seq, candidateChecksum: hex,
   clearedWork: z.array(workSchema).max(1024) }).strict()
 const dispatchSchema = z.object({ seq, subCallId: bounded(512), parentCallId: bounded(512), rootCallId: bounded(512),
   tool: bounded(300), isError: z.boolean(), outcome: z.enum(['UNVERIFIED', 'FAIL', 'NOT_RUN', 'UNKNOWN']), eventDigest: hex, turn: seq }).strict()

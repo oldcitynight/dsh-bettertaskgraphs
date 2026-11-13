@@ -8,12 +8,27 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createToolDefinitions } from '../tools.mjs'
-import { DshTransactionHost, sessionReference } from '../host.mjs'
+import { DshTransactionHost, sessionReference, artifactProof, ARTIFACT_MAX_BYTES } from '../host.mjs'
 import { initialState, applyEvent, KEY } from '../projection.mjs'
 import { TransactionGraph } from '../core.mjs'
 import { MemoryGraphStore } from '../store.mjs'
 import { seal } from '../journal.mjs'
 import { createRemoteContribution } from '../remote.mjs'
+
+test('standalone artifact default stays 16 MiB; a caller can explicitly raise its own bound', t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-large-artifact-')))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const file = path.join(root, 'trace.json'), size = 17 * 1024 * 1024, hash = createHash('sha256'), block = Buffer.alloc(65536)
+  fs.writeFileSync(file, ''); fs.truncateSync(file, size)
+  for (let i = 0; i < size / block.length; i++) hash.update(block)
+  const sha256 = hash.digest('hex'), reference = { kind: 'artifact', ref: file, sha256 }
+  assert.throws(() => artifactProof(root, reference), e => e.code === 'ARTIFACT_BYTE_LIMIT')
+  const large = { maxBytes: 1024 * 1024 * 1024 }
+  assert.equal(artifactProof(root, reference, undefined, large).stat.size, String(size))
+  assert.throws(() => artifactProof(root, { ...reference, sha256: '0'.repeat(64) }, undefined, large), e => e.code === 'ARTIFACT_CHANGED_OR_HASH_MISMATCH')
+  fs.truncateSync(file, ARTIFACT_MAX_BYTES + 1)
+  assert.throws(() => artifactProof(root, reference), e => e.code === 'ARTIFACT_BYTE_LIMIT')
+})
 
 const graphDefinition = { title: 'Host integration fixture', nodes: [
   { key: 'root', kind: 'container', label: 'Root' },
@@ -25,6 +40,7 @@ function fixture(t, { useSessionWorkspace = false } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'transaction-host-test-')))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const session = { id: 'fixture-session', inheritedEventCount: 0, header: { id: 'fixture-session', createdAt: 100, cwd: root } }
+  session.deriveMessages = () => []
   const agent = { id: session.id, session, status: 'running' }, definitions = new Map(), events = []
   let state = initialState(session.header), durable = true, persistWrites = true, durableCount = 0, live = true, current = agent, cwd = root, call = 0, owner = 0
   const ctx = { agents: { get: id => live && id === agent.id ? agent : undefined, currentInitiator: () => current },
@@ -39,7 +55,7 @@ function fixture(t, { useSessionWorkspace = false } = {}) {
     } },
     workingDirectory: { get: () => cwd, ensure: async () => cwd },
     sessionProjections: { stateOf: (_session, key) => key === KEY ? state : undefined },
-    tools: { get: name => definitions.get(name) }, logger: { warn() {} } }
+    get: () => undefined, tools: { get: name => definitions.get(name) }, logger: { warn() {} } }
   function append(type, data) {
     const event = { seq: events.length, type, data, time: 100 + events.length }
     events.push(event); state = applyEvent(state, event); return event.seq
@@ -113,6 +129,18 @@ test('bundle uses the original session workspace and keeps the journal there', a
   f.setCwd(path.dirname(f.root))
   assert.equal(f.host.inProject(f.session), false)
   assert.throws(() => f.host.journal(f.session), errorCode('PATH_OUTSIDE_OWN_PROJECT'))
+})
+
+test('generic presence distinguishes no graph from loss after a durable commit', async t => {
+  const f = fixture(t)
+  assert.equal(f.host.presence(f.session).state, 'NEVER_CREATED')
+  await f.createAndBegin()
+  assert.equal(f.host.presence(f.session).state, 'PRESENT')
+  const { binding, key } = f.host.journal(f.session)
+  fs.unlinkSync(path.join(binding.projectRoot, '.dsh', 'transaction-graphs-v4', key, 'transaction-host-journal.json'))
+  const result = f.host.presence(f.session)
+  assert.equal(result.state, 'LOST_OR_INVALID_AFTER_COMMIT'); assert.equal(result.previouslyCommitted, true)
+  await assert.rejects(f.callTool('create', { expectedRevision: 0, definition: graphDefinition }), /HOST_JOURNAL_MISSING_FOR_RECORDED_SESSION/)
 })
 
 test('real defineTool generates all five DSLs; mutation stays pending until durable actual tool result', async t => {

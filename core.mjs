@@ -266,6 +266,62 @@ function finishLeaf(state, data) {
   activate(state, active.nodeId, data.outcome, data.selectedCase)
 }
 
+/** Normalize a new plan while retaining durable identities and all started work. */
+export function revisedPlan(document, definition) {
+  validateDocument(document)
+  const previous = document.state.plan, plan = normalizePlan(definition, { enableSwitch: previous.enableSwitch })
+  const old = new Map(previous.nodes.map(node => [node.key, node]))
+  const historical = new Set(document.events.flatMap(event => event.data.plan?.nodes.map(node => node.key) ?? []))
+  for (const node of plan.nodes) if (!old.has(node.key) && historical.has(node.key)) fail('RETIRED_TASK_KEY_REUSE')
+  const ids = new Map(plan.nodes.map(node => [node.id, old.get(node.key)?.id ?? node.id]))
+  plan.id = previous.id
+  plan.nodes = plan.nodes.map(node => ({ ...node, id: ids.get(node.id), parent: ids.get(node.parent) ?? null }))
+  plan.edges = plan.edges.map(edge => {
+    const result = { ...edge, from: ids.get(edge.from), to: ids.get(edge.to) }
+    const match = previous.edges.find(row => canonical({ ...row, id: null }) === canonical({ ...result, id: null }))
+    return match ? copy(match) : result
+  })
+  validateRevisionTransition(document.state, plan)
+  return plan
+}
+export function validateRevisionTransition(state, plan) {
+  if (state.active) fail('REVISION_REQUIRES_NO_ACTIVE_ATTEMPT')
+  validatePlan(plan)
+  if (state.plan.id !== plan.id || state.plan.enableSwitch !== plan.enableSwitch) fail('REVISION_GRAPH_IDENTITY_CHANGED')
+  if (canonical(state.plan.edges.filter(edge => edge.kind !== 'prerequisite')) !== canonical(plan.edges.filter(edge => edge.kind !== 'prerequisite')))
+    fail('REVISION_BRANCH_POLICY_IMMUTABLE')
+  const next = new Map(plan.nodes.map(node => [node.id, node]))
+  for (const node of state.plan.nodes) {
+    const leaf = state.leaves[node.id]
+    if (node.parent === null && (!next.has(node.id)
+        || canonical({ ...next.get(node.id), label: node.label }) !== canonical(node))) fail('REVISION_ROOT_IMMUTABLE')
+    if (leaf && !['PENDING', 'INACTIVE'].includes(leaf.status)) {
+      if (canonical(next.get(node.id)) !== canonical(node)) fail('STARTED_TASK_IMMUTABLE')
+      const incoming = p => p.edges.filter(edge => edge.to === node.id)
+      if (canonical(incoming(state.plan)) !== canonical(incoming(plan))) fail('STARTED_TASK_PREREQUISITES_IMMUTABLE')
+    }
+    if (next.has(node.id) && (next.get(node.id).key !== node.key || next.get(node.id).kind !== node.kind)) fail('REVISION_TASK_IDENTITY_CHANGED')
+  }
+}
+function reviseState(state, data) {
+  object(data, ['plan', 'review'], 'revision event')
+  validateRevisionTransition(state, data.plan)
+  const review = data.review
+  if (!review || review.verdict !== 'APPROVE' || review.baseRevision !== state.revision
+      || review.planChecksum !== digest(data.plan) || !/^[a-f0-9]{64}$/.test(review.proposalHash ?? '')
+      || typeof review.updaterRunId !== 'string' || typeof review.reviewerRunId !== 'string'
+      || !review.updaterRunId || !review.reviewerRunId || review.updaterRunId === review.reviewerRunId) fail('INDEPENDENT_REVISION_REVIEW_REQUIRED')
+  const incoming = new Set(data.plan.edges.filter(edge => edge.kind !== 'prerequisite').map(edge => edge.to))
+  state.leaves = Object.fromEntries(data.plan.nodes.filter(node => node.kind === 'leaf').map(node => [node.id,
+    state.leaves[node.id] ?? { status: incoming.has(node.id) ? 'INACTIVE' : 'PENDING', evidence: [], acceptance: 'UNVERIFIED_REFERENCE' }]))
+  state.plan = copy(data.plan)
+  // A newly added predeclared route may originate in an already finished leaf.
+  for (const [id, leaf] of Object.entries(state.leaves)) {
+    if (leaf.status === 'COMPLETE' || leaf.status === 'INCOMPLETE') activate(state, id,
+      leaf.status === 'COMPLETE' ? 'complete' : 'incomplete', leaf.selectedCase ?? null)
+  }
+}
+
 // Deterministic replay is authoritative; snapshots are checked against it.
 export function replay(events) {
   if (!Array.isArray(events) || !events.length || events.length > LIMITS.events) fail('EVENT_LIMIT')
@@ -285,6 +341,8 @@ export function replay(events) {
       const leaves = Object.fromEntries(plan.nodes.filter(node => node.kind === 'leaf').map(node => [node.id,
         { status: incoming.has(node.id) ? 'INACTIVE' : 'PENDING', evidence: [], acceptance: 'UNVERIFIED_REFERENCE' }]))
       state = { schema: 1, revision: 0, plan, leaves, active: null, operations: [] }
+    } else if (event.type === 'REVISED') {
+      reviseState(state, event.data)
     } else if (event.type === 'BEGUN') {
       object(event.data, ['nodeId', 'attemptId', 'owner'], 'begin event')
       if (state.active || !legalNext(state).some(node => node.id === event.data.nodeId)
@@ -379,6 +437,13 @@ export class TransactionGraph {
     const result = this.mutate(expectedRevision, operationId, 'CREATED', state => {
       if (state) fail('PLAN_IMMUTABLE_CREATE_ONCE')
       return { plan: normalizePlan(definition, { enableSwitch: this.enableSwitch, id: this.id }) }
+    }); return view(result, this.owner)
+  }
+  revise({ expectedRevision, operationId, plan, review }) {
+    const result = this.mutate(expectedRevision, operationId, 'REVISED', state => {
+      if (!state) fail('NO_PLAN')
+      validateRevisionTransition(state, plan)
+      return { plan: copy(plan), review: copy(review) }
     }); return view(result, this.owner)
   }
   begin({ expectedRevision, operationId, choice }) {

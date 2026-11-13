@@ -7,6 +7,9 @@ import { createToolDefinitions } from './tools.mjs'
 import { DshTransactionHost } from './host.mjs'
 import { projection, KEY } from './projection.mjs'
 import { createRemoteContribution } from './remote.mjs'
+import { WorkflowRegistry, WORKFLOW_CONTRACT } from './interop.mjs'
+import { EXTENSION_CONTRACT, SessionPolicies } from './extensions.mjs'
+import { FileGraphStore } from './store.mjs'
 
 export const name = 'dsh-bettertaskgraphs'
 let bindSessionResource
@@ -24,15 +27,20 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
         || Object.keys(config).some(key => !['projectRoot', 'storageRelative', 'enableSwitch'].includes(key)))
       throw new Error('Invalid transaction graph configuration')
     this.host = new DshTransactionHost(ctx, { ...config, appendPluginRecord })
+    this.workflows = new WorkflowRegistry(ctx)
+    this.sessionPolicies = new SessionPolicies()
+    this.host.allowClassic = agent => this.sessionPolicies.allowClassic(agent)
+    Object.defineProperty(this, 'workflowContract', { value: WORKFLOW_CONTRACT })
+    Object.defineProperty(this, 'extensionContract', { value: EXTENSION_CONTRACT })
     ctx.sessionProjections.register(projection)
     for (const definition of createToolDefinitions({ defineTool, hostPort: this.host })) {
       this.host.definitions.set(definition.name, definition)
       ctx.tools.register(definition)
     }
-    ctx.systemPrompt.section({ name: 'project:transaction-graph', order: 46,
-      text: ({ agent }) => this.host.inProject(agent?.session) ? guidance : '' })
-    ctx.systemPrompt.context({ name: 'project:transaction-graph-state', order: 46, required: true, interpolate: false,
-      text: ({ agent }) => this.host.inProject(agent?.session) ? this.host.context(agent) : '' })
+      ctx.systemPrompt.section({ name: 'project:transaction-graph', order: 46,
+        text: ({ agent }) => this.host.inProject(agent?.session) && this.sessionPolicies.allowClassic(agent) ? guidance : '' })
+      ctx.systemPrompt.context({ name: 'project:transaction-graph-state', order: 46, required: true, interpolate: false,
+        text: ({ agent }) => this.host.inProject(agent?.session) && this.sessionPolicies.allowClassic(agent) ? this.host.context(agent) : '' })
     ctx.inject(['typert', 'sessionController'], remoteCtx => {
       const typert = remoteCtx.typert
       if (typert.resources.get('session')?.field !== 'sessionId') throw new Error('Transaction graph requires the native Session RPC resource')
@@ -54,7 +62,7 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
         queueMicrotask(() => { if (!this.host.closed) this.host.schedule(session) })
       }
     })
-    ctx.effect(() => () => this.host.close())
+    ctx.effect(() => () => { this.workflows.close(); this.sessionPolicies.close(); return this.host.close() })
   }
   async status({ sessionId }, signal) {
     signal?.throwIfAborted()
@@ -67,4 +75,15 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
   }
   registerRecoveryVerifier(adapter) { return this.host.registerRecoveryVerifier(adapter) }
   recoverInterrupted(agent, request) { return this.host.recoverInterrupted(agent, request) }
+  registerWorkflowProvider(adapter) { return this.workflows.register(adapter) }
+  listWorkflows(agent) { return this.workflows.list(agent) }
+  readWorkflow(agent, reference) { return this.workflows.read(agent, reference) }
+  dispatchWorkflow(agent, reference, operation, request, signal) { return this.workflows.dispatch(agent, reference, operation, request, signal) }
+  subscribeWorkflows(callback) { return this.workflows.subscribe(callback) }
+  registerSessionPolicy(provider) { return this.sessionPolicies.register(provider) }
+  createExtensionStore(options) {
+    if (this.host.closed) throw new Error('TASK_GRAPH_SERVICE_CLOSED')
+    return new FileGraphStore(options)
+  }
+  inspectGraphPresence(agent) { return this.host.presence(agent.session) }
 }

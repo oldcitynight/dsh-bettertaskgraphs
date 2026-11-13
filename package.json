@@ -1,9 +1,14 @@
 {
   "name": "dsh-bettertaskgraphs",
-  "version": "0.2.3",
+  "version": "0.3.0-rc.11",
   "description": "Transactional task graphs with a conversation panel for DeepSeek Harness",
   "license": "GPL-3.0-only",
-  "keywords": ["dsh", "deepseek-harness", "cordis", "task-graph"],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "task-graph"
+  ],
   "homepage": "https://github.com/oldcitynight/dsh-bettertaskgraphs#readme",
   "repository": {
     "type": "git",
@@ -16,7 +21,12 @@
   "main": "./index.mjs",
   "exports": {
     ".": "./index.mjs",
-    "./client": "./client.js"
+    "./core": "./core.mjs",
+    "./store": "./store.mjs",
+    "./host": "./host.mjs",
+    "./interop": "./interop.mjs",
+    "./client": "./client.js",
+    "./extensions": "./extensions.mjs"
   },
   "files": [
     "client.js",
@@ -25,6 +35,7 @@
     "core.mjs",
     "host.mjs",
     "index.mjs",
+    "interop.mjs",
     "journal.mjs",
     "projection.mjs",
     "remote.mjs",
@@ -32,7 +43,9 @@
     "store.mjs",
     "tools.mjs",
     "view-model.mjs",
-    "work-policy.mjs"
+    "work-policy.mjs",
+    "extensions.mjs",
+    "VALIDATION.md"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -48,6 +61,7 @@
   },
   "publishConfig": {
     "access": "public",
+    "tag": "next",
     "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {

@@ -9,6 +9,8 @@ import { KEY, INTENT, RECEIPT, RECOVERY } from './projection.mjs'
 import { administrative, incompleteDisposition, ownedExecutionChain, unresolvedWork, workKey } from './work-policy.mjs'
 
 const fail = (code, detail = code) => { throw new GraphError(code, detail) }
+// Preserve the standalone pre-extension default. Callers may opt into a policy.
+export const ARTIFACT_MAX_BYTES = 16 * 1024 * 1024
 const under = (root, target) => { const relative = path.relative(root, target); return !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep) }
 export function realProjectPath(root, requested, { directory = true } = {}) {
   if (typeof requested !== 'string' || !path.isAbsolute(requested)) fail('ABSOLUTE_PROJECT_PATH_REQUIRED')
@@ -38,15 +40,33 @@ function referenceSeq(reference, sessionId) {
   if (!Number.isSafeInteger(value) || value < 0) fail('EVIDENCE_BAD_SEQ')
   return value
 }
-export function artifactProof(projectRoot, ref, signal) {
+export function artifactProof(projectRoot, ref, signal, { maxBytes = ARTIFACT_MAX_BYTES } = {}) {
   if (!ref.sha256) fail('ARTIFACT_SHA_REQUIRED')
+  const identity = readArtifactIdentity(projectRoot, ref, signal, { maxBytes })
+  if (identity.sha256 !== ref.sha256) fail('ARTIFACT_CHANGED_OR_HASH_MISMATCH')
+  return identity
+}
+/** Observation of a historically verified deliverable, never current acceptance. */
+export function artifactCurrentIdentity(projectRoot, ref, signal, options) {
+  if (!ref.sha256) fail('ARTIFACT_SHA_REQUIRED')
+  try {
+    const identity = readArtifactIdentity(projectRoot, ref, signal, options)
+    return { ref: identity.path, acceptedSha256: ref.sha256, currentSha256: identity.sha256,
+      status: identity.sha256 === ref.sha256 ? 'UNCHANGED' : 'CHANGED', stat: identity.stat }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    return { ref: ref.ref, acceptedSha256: ref.sha256, currentSha256: null, status: 'MISSING' }
+  }
+}
+function readArtifactIdentity(projectRoot, ref, signal, { maxBytes = ARTIFACT_MAX_BYTES } = {}) {
+  if (maxBytes !== null && (!Number.isSafeInteger(maxBytes) || maxBytes < 1)) fail('ARTIFACT_BYTE_POLICY_INVALID')
   const requested = path.isAbsolute(ref.ref) ? ref.ref : path.resolve(projectRoot, ref.ref)
   const file = realProjectPath(projectRoot, requested, { directory: false })
   if (file.toLowerCase().endsWith('.gguf')) fail('MODEL_CONTENT_IS_NOT_TRANSACTION_ARTIFACT')
   const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
   try {
     const before = fs.fstatSync(fd, { bigint: true })
-    if (!before.isFile() || before.size > 16n * 1024n * 1024n) fail('ARTIFACT_BYTE_LIMIT')
+    if (!before.isFile() || maxBytes !== null && before.size > BigInt(maxBytes)) fail('ARTIFACT_BYTE_LIMIT')
     const hash = createHash('sha256'), buffer = Buffer.alloc(65536)
     let total = 0n
     while (true) {
@@ -59,8 +79,8 @@ export function artifactProof(projectRoot, ref, signal) {
     const after = fs.fstatSync(fd, { bigint: true }), outside = fs.lstatSync(file, { bigint: true })
     const keys = ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs']
     if (total !== before.size || keys.some(key => before[key] !== after[key] || before[key] !== outside[key])
-        || fs.realpathSync(file) !== file || hash.digest('hex') !== ref.sha256) fail('ARTIFACT_CHANGED_OR_HASH_MISMATCH')
-    return { kind: 'artifact', refDigest: digest(ref), path: file, sha256: ref.sha256,
+        || fs.realpathSync(file) !== file) fail('ARTIFACT_CHANGED_OR_HASH_MISMATCH')
+    return { kind: 'artifact', refDigest: digest(ref), path: file, sha256: hash.digest('hex'),
       stat: Object.fromEntries(keys.map(key => [key, String(before[key])])) }
   } finally { fs.closeSync(fd) }
 }
@@ -182,6 +202,25 @@ export class DshTransactionHost {
         pending, legalNext: choices(display.legalNext), skipChoices: choices(display.skipChoices) } }
     } catch { return { ...base, status: 'unavailable' } }
   }
+  presence(session) {
+    if (!this.inProject(session)) return { state: 'OUTSIDE_SCOPE', previouslyCommitted: false }
+    const projected = this.projection(session)
+    const previouslyCommitted = projected.receipts.some(row => row.status === 'COMMITTED')
+    try {
+      const binding = this.binding(session)
+      const file = path.join(binding.projectRoot, this.storageRelative, digest(binding), 'transaction-host-journal.json')
+      if (!fs.existsSync(file)) {
+        if (projected.intents.length || projected.receipts.length) fail('HOST_JOURNAL_MISSING_FOR_RECORDED_SESSION')
+        return { state: 'NEVER_CREATED', previouslyCommitted: false, revision: 0 }
+      }
+      const { saved } = this.journal(session, { readOnly: true })
+      return { state: saved.document ? 'PRESENT' : previouslyCommitted ? 'LOST_OR_INVALID_AFTER_COMMIT' : saved.pending ? 'CREATION_PENDING' : 'NEVER_CREATED', previouslyCommitted,
+        revision: saved.document?.revision ?? 0 }
+    } catch (error) {
+      return { state: previouslyCommitted ? 'LOST_OR_INVALID_AFTER_COMMIT' : 'UNKNOWN_INTERRUPTED_CREATION',
+        previouslyCommitted, code: error.code ?? error.name }
+    }
+  }
   assertOwned(authority, exec) {
     const agent = exec.agent
     exec.signal?.throwIfAborted()
@@ -194,6 +233,7 @@ export class DshTransactionHost {
     if (!this.projection(agent.session).turn) fail('OPEN_MODEL_TURN_REQUIRED')
   }
   async authorize(exec) {
+    if (this.allowClassic && !this.allowClassic(exec.agent)) fail('TRANSACTION_GRAPH_SESSION_EXTENSION_DENIED')
     if (!exec.agent || this.ctx.agents.get(exec.agent.id) !== exec.agent || this.ctx.agents.currentInitiator() !== exec.agent) fail('EXACT_CALLING_AGENT_REQUIRED')
     await this.ctx.workingDirectory.ensure(exec.agent, exec.signal)
     const { binding, key } = this.journal(exec.agent.session)
@@ -276,6 +316,7 @@ export class DshTransactionHost {
       if (canonical(current) !== canonical(record)) fail('PENDING_RESULT_CHANGED_DURING_FLUSH')
       if (p.intentSeq === null) saved = journal.bindIntent(p.operationId, record.intentSeq)
       let rejectReason = null
+      if (p.operation === 'revise') rejectReason = 'This retired host revision entry requires its original extension; it cannot commit in standalone mode.'
       if (p.operation === 'finish' && record.status === 'SUCCESS') {
         try {
           const work = this.workState(session, saved, projected)
