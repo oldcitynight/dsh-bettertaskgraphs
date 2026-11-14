@@ -1,6 +1,8 @@
 # dsh-bettertaskgraphs
 
-当前候选版本为 `0.3.0-rc.11`。独立运行保留动态上下文开发前 `0.2.3` 的五个工具、初始指引与事务语义；通用扩展接口供其他插件登记工作流和会话策略。动态上下文装配、修改审批及其提示词由扩展插件实现。
+本构建版本为 `0.3.1-rc.33`。适用宿主和配套版本见 [兼容清单](DSH-COMPATIBILITY.json)。
+
+独立运行保留动态上下文开发前 `0.2.3` 的五个工具、初始指引与事务语义；通用扩展接口供其他插件登记工作流和会话策略。动态上下文装配、修改审批及其提示词由扩展插件实现。
 
 配套扩展：[dsh-dynamic-context](https://github.com/oldcitynight/dsh-dynamic-context)。本候选的验证范围与复现方式见 [VALIDATION.md](VALIDATION.md)。
 
@@ -10,8 +12,10 @@ DeepSeek Harness 的事务型任务图 Bundle，包含模型侧的任务图工�
 
 ## 兼容范围
 
-- DSH `0.2.1-rc.5`，使用 Web profile。
-- Node.js `^22.19.0 || >=24.0.0`，开发用 npm。此包与 DSH 共享会话、工具和远程调用接口，升级 DSH 时需要重新验证这些接口。
+分支 `0.2.2-alpha.2` 采用 npm 标签 `dsh-0.2.2-alpha.2`。配套动态上下文版本为 `0.1.1-rc.33`。
+
+- DSH `0.2.2-alpha.2`，使用 Web profile。
+- Node.js `>=24.9.0`，开发用 npm。此包与 DSH 共享会话、工具和远程调用接口，升级 DSH 时需要重新验证这些接口。
 
 ## 构建和打包
 
@@ -22,7 +26,7 @@ npm test
 npm run pack:bundle
 ```
 
-`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.3.0-rc.11.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
+`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.3.1-rc.33.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
 
 ## 安装到独立 Web profile
 
@@ -30,7 +34,7 @@ npm run pack:bundle
 
 ```sh
 dsh --profile bettertaskgraphs --from-default-profile web --dump-config
-dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.3.0-rc.11.tgz"
+dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.3.1-rc.33.tgz"
 dsh --profile bettertaskgraphs --dump-config
 dsh --profile bettertaskgraphs
 ```
@@ -51,7 +55,7 @@ Bundle 默认将会话创建时的工作目录作为项目根，账本位于根�
 
 替换原有的 `dsh-project-transaction-graph` 时，请在目标 profile 移除旧 Bundle 后再安装此包。两者使用同一组工具和会话投影键。新包沿用 V4 账本与会话事件格式。要接回已有任务图，须使用原会话、相同的项目根和账本目录，并沿用原先的 `enableSwitch` 设置。如果会话从项目子目录启动，请显式指定原项目根。
 
-[DSH 官方 Bundle 打包文档](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-rc.5/docs/user/develop/basic/publish.zh.md)
+[DSH 官方 Bundle 打包文档](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.1/docs/user/develop/basic/publish.zh.md)
 
 ## 插件间联动 API v1
 
