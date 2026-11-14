@@ -1,6 +1,6 @@
-# dsh-bettertaskgraphs
+# dsh-better-task-grapth
 
-本构建版本为 `0.3.1-rc.35`。适用宿主和配套版本见 [兼容清单](DSH-COMPATIBILITY.json)。
+本构建版本为 `0.3.1-rc.45`。适用宿主和配套版本见 [兼容清单](DSH-COMPATIBILITY.json)。
 
 独立运行保留动态上下文开发前 `0.2.3` 的五个工具、初始指引与事务语义；通用扩展接口供其他插件登记工作流和会话策略。动态上下文装配、修改审批及其提示词由扩展插件实现。
 
@@ -12,7 +12,7 @@ DeepSeek Harness 的事务型任务图 Bundle，包含模型侧的任务图工�
 
 ## 兼容范围
 
-分支 `0.2.1-alpha.2` 采用 npm 标签 `dsh-0.2.1-alpha.2`。配套动态上下文版本为 `0.1.1-rc.35`。
+分支 `0.2.1-alpha.2` 采用 npm 标签 `dsh-0.2.1-alpha.2`。配套动态上下文版本为 `0.1.1-rc.45`。
 
 - DSH `0.2.1-alpha.2`，使用 Web profile。
 - Node.js `^22.19.0 || >=24.0.0`，开发用 npm。此包与 DSH 共享会话、工具和远程调用接口，升级 DSH 时需要重新验证这些接口。
@@ -26,7 +26,7 @@ npm test
 npm run pack:bundle
 ```
 
-`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.3.1-rc.35.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
+`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-better-task-grapth-0.3.1-rc.45.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
 
 ## 安装到独立 Web profile
 
@@ -34,19 +34,21 @@ npm run pack:bundle
 
 ```sh
 dsh --profile bettertaskgraphs --from-default-profile web --dump-config
-dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.3.1-rc.35.tgz"
+dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-better-task-grapth-0.3.1-rc.45.tgz"
 dsh --profile bettertaskgraphs --dump-config
 dsh --profile bettertaskgraphs
 ```
 
-通过 `--dump-config` 可以确认已合成 `dsh-bettertaskgraphs` 配置层。若同一台机器已运行 Web，请为新 profile 选择一个空闲端口。用 `dsh plugin --profile bettertaskgraphs remove dsh-bettertaskgraphs` 移除该配置层。
+通过 `--dump-config` 可以确认已合成 `dsh-better-task-grapth` 配置层。若同一台机器已运行 Web，请为新 profile 选择一个空闲端口。用 `dsh plugin --profile bettertaskgraphs remove dsh-better-task-grapth` 移除该配置层。
 
 ## 工作区与已有任务图
+
+本包由 `dsh-bettertaskgraphs` 更名为 `dsh-better-task-grapth`。升级已有 profile 时，在空闲边界移除旧包，再安装同一宿主线的新包及配套动态上下文。原项目根和账本目录继续使用；自定义配置中的任务图层 `id` 需改为 `dsh-better-task-grapth`，保留其 `config`。同一 profile 只启用一份任务图插件。
 
 Bundle 默认将会话创建时的工作目录作为项目根，账本位于根目录下的 `.dsh/transaction-graphs-v4/`。后续工作目录必须位于该根内，账本路径拒绝符号链接。也可以在 profile 的 `cordis.patch.yml` 中固定项目根。
 
 ```yaml
-- id: dsh-bettertaskgraphs
+- id: dsh-better-task-grapth
   config:
     projectRoot: /absolute/path/to/project
     storageRelative: .dsh/transaction-graphs-v4
@@ -59,7 +61,7 @@ Bundle 默认将会话创建时的工作目录作为项目根，账本位于根�
 
 ## 插件间联动 API v1
 
-公共模块导出为 `dsh-bettertaskgraphs/core`、`/store`、`/host`、`/interop`。消费者无需再访问包内私有路径。`ctx.transactionGraph.workflowContract` 固定为 `dsh-taskgraph-workflow-v1`。
+公共模块导出为 `dsh-better-task-grapth/core`、`/store`、`/host`、`/interop`。消费者无需再访问包内私有路径。`ctx.transactionGraph.workflowContract` 固定为 `dsh-taskgraph-workflow-v1`。
 
 宿主插件通过 `registerWorkflowProvider(adapter)` 登记一个联动工作流，返回取消登记函数。adapter 必须给出 contract、version:1、kind、workflowId、真实 projectRoot、operations、authorize、read、execute；subscribe 可发布已提交后的变更通知。重复标识拒绝覆盖，取消登记会取消该入口发起的在途执行。
 
