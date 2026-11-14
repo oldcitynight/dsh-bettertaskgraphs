@@ -1,6 +1,8 @@
 # dsh-bettertaskgraphs
 
-当前候选版本为 `0.3.0-rc.11`。独立运行保留动态上下文开发前 `0.2.3` 的五个工具、初始指引与事务语义；通用扩展接口供其他插件登记工作流和会话策略。动态上下文装配、修改审批及其提示词由扩展插件实现。
+本构建版本为 `0.3.1-rc.39`。适用宿主和配套版本见 [兼容清单](DSH-COMPATIBILITY.json)。
+
+独立运行保留动态上下文开发前 `0.2.3` 的五个工具、初始指引与事务语义；通用扩展接口供其他插件登记工作流和会话策略。动态上下文装配、修改审批及其提示词由扩展插件实现。
 
 配套扩展：[dsh-dynamic-context](https://github.com/oldcitynight/dsh-dynamic-context)。本候选的验证范围与复现方式见 [VALIDATION.md](VALIDATION.md)。
 
@@ -10,7 +12,9 @@ DeepSeek Harness 的事务型任务图 Bundle，包含模型侧的任务图工�
 
 ## 兼容范围
 
-- DSH `0.2.1-rc.5`，使用 Web profile。
+分支 `0.1.7-rc.1` 采用 npm 标签 `dsh-0.1.7-rc.1`。配套动态上下文版本为 `0.1.1-rc.39`。
+
+- DSH `0.1.7-rc.1`、`0.1.7-alpha.2`，使用 Web profile。
 - Node.js `^22.19.0 || >=24.0.0`，开发用 npm。此包与 DSH 共享会话、工具和远程调用接口，升级 DSH 时需要重新验证这些接口。
 
 ## 构建和打包
@@ -22,7 +26,7 @@ npm test
 npm run pack:bundle
 ```
 
-`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.3.0-rc.11.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
+`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.3.1-rc.39.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
 
 ## 安装到独立 Web profile
 
@@ -30,7 +34,7 @@ npm run pack:bundle
 
 ```sh
 dsh --profile bettertaskgraphs --from-default-profile web --dump-config
-dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.3.0-rc.11.tgz"
+dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.3.1-rc.39.tgz"
 dsh --profile bettertaskgraphs --dump-config
 dsh --profile bettertaskgraphs
 ```
@@ -38,6 +42,8 @@ dsh --profile bettertaskgraphs
 通过 `--dump-config` 可以确认已合成 `dsh-bettertaskgraphs` 配置层。若同一台机器已运行 Web，请为新 profile 选择一个空闲端口。用 `dsh plugin --profile bettertaskgraphs remove dsh-bettertaskgraphs` 移除该配置层。
 
 ## 工作区与已有任务图
+
+在这条维护线上，宿主 JSONL 目录保存独立的插件会话记录与标记。备份和恢复会话时应一起保留，任务图事务仍以宿主持久化的原始工具记录校验证据。插件会话记录缺失时，先从完整备份恢复。
 
 Bundle 默认将会话创建时的工作目录作为项目根，账本位于根目录下的 `.dsh/transaction-graphs-v4/`。后续工作目录必须位于该根内，账本路径拒绝符号链接。也可以在 profile 的 `cordis.patch.yml` 中固定项目根。
 
