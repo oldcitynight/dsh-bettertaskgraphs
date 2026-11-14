@@ -1,3 +1,8 @@
+# 0.3.1-rc.37 — DSH compatibility line
+
+- Pin this build to its listed DSH releases and pair it with the other plugin on RC slot 7.
+- Persist plugin records in a separate JSONL-host-bound journal while validating native tool evidence against DSH persistence. Adapt the Web read endpoint to the native Session lookup of this host generation.
+
 # 0.3.0-rc.11 — independent base and generic extension ports (2026-11-13)
 
 - Restore the 0.2.3 standalone five-tool guidance and work protocol; restore the 16 MiB artifact default.

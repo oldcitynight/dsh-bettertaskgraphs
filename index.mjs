@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { z } from 'zod'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { appendPluginRecord } from '@deepseek-ai/dsh-session'
+import { LegacySessionRecords } from './session-records.mjs'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createToolDefinitions } from './tools.mjs'
 import { DshTransactionHost } from './host.mjs'
-import { projection, KEY } from './projection.mjs'
 import { createRemoteContribution } from './remote.mjs'
 import { WorkflowRegistry, WORKFLOW_CONTRACT } from './interop.mjs'
 import { EXTENSION_CONTRACT, SessionPolicies } from './extensions.mjs'
@@ -13,26 +12,27 @@ import { FileGraphStore } from './store.mjs'
 
 export const name = 'dsh-bettertaskgraphs'
 let bindSessionResource
-Remote({ resources: { session: ({ sessionId }) => sessionId } })(undefined, {
+Remote('status')(undefined, {
   kind: 'method', name: 'status', addInitializer: callback => { bindSessionResource = callback },
 })
 const guidance = 'For work the user asks to track in a transaction graph, read the program-generated revision and choices before creating or resuming it. One leaf may be active. Begin must commit before work starts. Pending or UNKNOWN work blocks finish and dependent work. Never replay blindly. Complete requires a qualified successful tool result after begin. Incomplete requires known failure, confirmed non-execution, or an unsatisfied outcome. Wait for the enclosing tool call to finish and read the committed state before continuing. Containers aggregate. Transaction completion does not complete Goal.'
 
 export default class TransactionGraphPlugin extends TypertRemoteService {
-  static inject = ['agents', 'sessions', 'sessionProjections', 'sessionPersistence', 'workingDirectory', 'tools', 'systemPrompt']
+  static inject = ['agents', 'sessions', 'sessionProjections', 'sessionPersistence', 'tools', 'systemPrompt']
   constructor(ctx, config = {}) {
     super(ctx, 'transactionGraph', { namespace: 'transactionGraphView' })
     bindSessionResource.call(this)
     if (!config || typeof config !== 'object' || Array.isArray(config)
         || Object.keys(config).some(key => !['projectRoot', 'storageRelative', 'enableSwitch'].includes(key)))
       throw new Error('Invalid transaction graph configuration')
-    this.host = new DshTransactionHost(ctx, { ...config, appendPluginRecord })
+    this.sessionRecords = new LegacySessionRecords(ctx)
+    this.host = new DshTransactionHost(ctx, { ...config, sessionRecords: this.sessionRecords,
+      appendPluginRecord: (session, type, data) => this.sessionRecords.append(session, type, data) })
     this.workflows = new WorkflowRegistry(ctx)
     this.sessionPolicies = new SessionPolicies()
     this.host.allowClassic = agent => this.sessionPolicies.allowClassic(agent)
     Object.defineProperty(this, 'workflowContract', { value: WORKFLOW_CONTRACT })
     Object.defineProperty(this, 'extensionContract', { value: EXTENSION_CONTRACT })
-    ctx.sessionProjections.register(projection)
     for (const definition of createToolDefinitions({ defineTool, hostPort: this.host })) {
       this.host.definitions.set(definition.name, definition)
       ctx.tools.register(definition)
@@ -43,7 +43,7 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
         text: ({ agent }) => this.host.inProject(agent?.session) && this.sessionPolicies.allowClassic(agent) ? this.host.context(agent) : '' })
     ctx.inject(['typert', 'sessionController'], remoteCtx => {
       const typert = remoteCtx.typert
-      if (typert.resources.get('session')?.field !== 'sessionId') throw new Error('Transaction graph requires the native Session RPC resource')
+      if (typert.lookups.get('session')?.wire !== 'sessionId') throw new Error('Transaction graph requires the native Session RPC lookup')
       const contribution = createRemoteContribution(z)
       remoteCtx.effect(() => typert.register({ package: contribution.package, face: 'host', schemas: [],
         model: { services: [], events: [], objects: [] }, invocations: contribution.descriptors }))
@@ -55,8 +55,10 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
       try { return await next() } finally { running.delete(exec) }
     })
     ctx.on('session/event', (session, event) => {
-      if ((event.type === 'tool/result' || event.type === 'turn/end')
-          && ctx.sessionProjections.stateOf(session, KEY)?.intents.length) {
+      if (event.type === 'tool/result' || event.type === 'turn/end') {
+        if (!this.host.inProject(session)) return
+        try { if (!this.host.projection(session).intents.length) return }
+        catch (error) { ctx.logger.warn('Legacy transaction projection unavailable', error); return }
         // Appending during publication is forbidden by Session; defer the
         // durability barrier and journal CAS until publication has unwound.
         queueMicrotask(() => { if (!this.host.closed) this.host.schedule(session) })
@@ -64,14 +66,10 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
     })
     ctx.effect(() => () => { this.workflows.close(); this.sessionPolicies.close(); return this.host.close() })
   }
-  async status({ sessionId }, signal) {
+  async status(session, signal) {
     signal?.throwIfAborted()
-    const controller = this.ctx.get('sessionController')
-    if (!controller) throw new RemoteError('session/not-found', 'Session controller unavailable', { sessionId })
-    const result = await controller.resolveAgent(sessionId)
-    if (result.error) throw result.error
-    signal?.throwIfAborted()
-    return this.host.snapshot(result.agent.session)
+    if (!this.host.inProject(session)) throw new RemoteError('session/not-found', 'Session unavailable')
+    return this.host.snapshot(session)
   }
   registerRecoveryVerifier(adapter) { return this.host.registerRecoveryVerifier(adapter) }
   recoverInterrupted(agent, request) { return this.host.recoverInterrupted(agent, request) }

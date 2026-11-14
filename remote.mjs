@@ -3,7 +3,6 @@
 export function createRemoteContribution(z) {
   const packageName = 'dsh-bettertaskgraphs'
   const id = z.string().min(1).max(128)
-  const input = z.object({ sessionId: id }).strict()
   const node = z.object({
     id, label: z.string().min(1).max(512), kind: z.enum(['container', 'leaf']),
     parent: id.nullable(),
@@ -40,9 +39,8 @@ export function createRemoteContribution(z) {
       id: `${packageName}#transactionGraphView/status`,
       service: 'transactionGraph', namespace: 'transactionGraphView', method: 'status', invocation: { kind: 'direct' },
       parameters: [{
-        name: 'request', wire: 'request', source: 'json',
-        codec: codec('TransactionGraphStatusRequest', input),
-        strictCodec: codec('TransactionGraphStatusStrictRequest', input),
+        name: 'session', wire: 'sessionId', source: 'lookup', lookup: 'session',
+        codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-session/types#SessionId', create: () => id },
       }],
       cancellation: { parameter: 'signal' },
       result: codec('TransactionGraphStatusResult', output),
