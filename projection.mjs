@@ -59,7 +59,14 @@ export function outcomeOfContent(content = []) {
 }
 function toolOutcome(state, tool, rootCallId, callId, content) {
   const outcome = outcomeOfContent(content)
-  if (tool !== 'bash' || !state.bashFailures.some(row => row.rootCallId === rootCallId && row.callId === callId)) return outcome
+  if (tool !== 'bash') return outcome
+  // These DSH hosts deliver the native Bash status as renderer suffixes.
+  const text = content?.length === 1 && content[0].type === 'text' ? content[0].text.trimEnd() : ''
+  if (/(?:^|\n)started background job [^\n]+$|\[still running after \d+ms; moved to background job [^\]\n]+\]/.test(text))
+    return 'UNKNOWN'
+  const nativeFailure = /(?:^|\n)\[(?:timed out after \d+ms|stopped: [^\]\n]+|sandbox: file access denied under [^\]\n]+ mode)\](?:\n|$)/.test(text)
+    || /(?:^|\n)\[(?:exit code: (?!0\])-?\d+|killed by signal: [^\]\n]+)\]$/.test(text)
+  if (!nativeFailure && !state.bashFailures.some(row => row.rootCallId === rootCallId && row.callId === callId)) return outcome
   return outcome === 'UNKNOWN' || outcome === 'NOT_RUN' ? 'UNKNOWN' : 'FAIL'
 }
 export function chainQualification(start, root, dispatches) {

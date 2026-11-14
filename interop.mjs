@@ -42,7 +42,7 @@ export class WorkflowRegistry {
   authorize(entry, agent) {
     if (this.closed || !agent || this.ctx.agents.get(agent.id) !== agent || this.ctx.sessions.get(agent.session.id) !== agent.session)
       fail('WORKFLOW_EXACT_CONTROLLER_REQUIRED')
-    const cwd = this.ctx.workingDirectory.get(agent.session)
+    const cwd = this.ctx.get?.('workingDirectory')?.get(agent.session) ?? agent.session.header.cwd
     if (typeof cwd !== 'string' || !within(entry.projectRoot, fs.realpathSync(cwd))
         || !within(entry.projectRoot, fs.realpathSync(agent.session.header.cwd))) fail('WORKFLOW_CONTROLLER_OUTSIDE_PROJECT')
     if (entry.authorize(agent) !== true) fail('WORKFLOW_CONTROLLER_NOT_AUTHORIZED')

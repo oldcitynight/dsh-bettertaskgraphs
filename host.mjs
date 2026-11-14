@@ -109,7 +109,7 @@ export function resolveEvidence({ references, state, binding, activeProof, outco
 
 export class DshTransactionHost {
   constructor(ctx, { projectRoot, storageRelative = '.dsh/transaction-graphs-v4', enableSwitch = false,
-    appendPluginRecord, journalFactory = options => new HostJournal(options), owner = `owner_${randomUUID()}` }) {
+    appendPluginRecord, sessionRecords, journalFactory = options => new HostJournal(options), owner = `owner_${randomUUID()}` }) {
     if (typeof appendPluginRecord !== 'function') fail('SESSION_WRITER_REQUIRED')
     if (projectRoot !== undefined && (typeof projectRoot !== 'string' || !path.isAbsolute(projectRoot)
         || fs.realpathSync(projectRoot) !== path.resolve(projectRoot) || !fs.lstatSync(projectRoot).isDirectory()))
@@ -119,6 +119,7 @@ export class DshTransactionHost {
     if (typeof enableSwitch !== 'boolean') fail('INVALID_SWITCH_POLICY')
     this.ctx = ctx; this.projectRoot = projectRoot === undefined ? undefined : path.resolve(projectRoot)
     this.storageRelative = storageRelative; this.enableSwitch = enableSwitch
+    this.sessionRecords = sessionRecords
     this.append = appendPluginRecord; this.journalFactory = journalFactory; this.owner = owner
     this.journals = new Map(); this.serial = new WeakMap(); this.tasks = new Set(); this.definitions = new Map(); this.closed = false
     this.recoveryVerifier = null
@@ -126,7 +127,7 @@ export class DshTransactionHost {
     this.lifecycle = new AbortController()
   }
   projection(session) {
-    const state = this.ctx.sessionProjections.stateOf(session, KEY)
+    const state = this.sessionRecords ? this.sessionRecords.projection(session) : this.ctx.sessionProjections.stateOf(session, KEY)
     if (!state || state.failure) fail('TRANSACTION_PROJECTION_UNAVAILABLE', state?.failure ?? 'Required projection missing')
     return state
   }
@@ -134,7 +135,7 @@ export class DshTransactionHost {
     if (this.ctx.sessions.get(session.id) !== session || session.header.id !== session.id || !Number.isSafeInteger(session.header.createdAt)) fail('SESSION_NOT_EXACT_LIVE_OWNER')
     const original = realProjectPath(this.projectRoot ?? session.header.cwd, session.header.cwd)
     const projectRoot = this.projectRoot ?? original
-    realProjectPath(projectRoot, this.ctx.workingDirectory.get(session))
+    realProjectPath(projectRoot, this.ctx.get('workingDirectory')?.get(session) ?? original)
     return { contract: 'DSH_TRANSACTION_GRAPH_HOST_V4', projectRoot, sessionId: session.id,
       sessionCreatedAt: session.header.createdAt, originalCwd: original, enableSwitch: this.enableSwitch }
   }
@@ -204,9 +205,10 @@ export class DshTransactionHost {
   }
   presence(session) {
     if (!this.inProject(session)) return { state: 'OUTSIDE_SCOPE', previouslyCommitted: false }
-    const projected = this.projection(session)
-    const previouslyCommitted = projected.receipts.some(row => row.status === 'COMMITTED')
+    let previouslyCommitted = false
     try {
+      const projected = this.projection(session)
+      previouslyCommitted = projected.receipts.some(row => row.status === 'COMMITTED')
       const binding = this.binding(session)
       const file = path.join(binding.projectRoot, this.storageRelative, digest(binding), 'transaction-host-journal.json')
       if (!fs.existsSync(file)) {
@@ -235,7 +237,8 @@ export class DshTransactionHost {
   async authorize(exec) {
     if (this.allowClassic && !this.allowClassic(exec.agent)) fail('TRANSACTION_GRAPH_SESSION_EXTENSION_DENIED')
     if (!exec.agent || this.ctx.agents.get(exec.agent.id) !== exec.agent || this.ctx.agents.currentInitiator() !== exec.agent) fail('EXACT_CALLING_AGENT_REQUIRED')
-    await this.ctx.workingDirectory.ensure(exec.agent, exec.signal)
+    exec.signal?.throwIfAborted()
+    await this.ctx.get('workingDirectory')?.ensure(exec.agent, exec.signal)
     const { binding, key } = this.journal(exec.agent.session)
     const authority = { agent: exec.agent, session: exec.agent.session, agentId: exec.agent.id,
       sessionScope: key, currentInitiatorVerified: true, binding }
@@ -291,6 +294,7 @@ export class DshTransactionHost {
       if (handle.access !== 'read' || handle.id !== session.id || !sameStoredSessionHeader(handle.header, session.header)
           || handle.inheritedEventCount !== session.inheritedEventCount) fail('DURABLE_SESSION_HEADER_OR_SCOPE_MISMATCH')
       for (const proof of proofs) {
+        if (this.sessionRecords && await this.sessionRecords.verify(session, handle, proof)) continue
         const result = await handle.read(proof.seq, 1)
         if (result.events.length !== 1 || result.events[0].seq !== proof.seq || digest(result.events[0]) !== proof.digest)
           fail('DURABLE_SESSION_EVENT_PROOF_REQUIRED')
