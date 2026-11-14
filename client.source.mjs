@@ -263,15 +263,14 @@ export function createClientPlugin(React, z, createRemoteContribution, graphPres
   }
 
   function makeDock(api) {
-    return function TransactionGraphDock({ sessionId, useSession, useAccess, t }) {
-      const canRead = useAccess('transactionGraphView/status')
+    return function TransactionGraphDock({ sessionId, useSession, t }) {
       const opened = useSession(session => session.openState === 'open' && !session.removed)
       const running = useSession(session => session.running)
       const [result, setResult] = useState(null)
       const [refreshCount, requestRefresh] = useState(0)
       const refresh = () => requestRefresh(value => value + 1)
       useEffect(() => {
-        if (!canRead || !opened) return
+        if (!opened) return
         const controller = new AbortController()
         let timer
         async function refreshStatus() {
@@ -281,7 +280,7 @@ export function createClientPlugin(React, z, createRemoteContribution, graphPres
             busy: true, failed: value?.sessionId === sessionId && value.failed,
           }))
           try {
-            const response = await api.status({ sessionId }, signal)
+            const response = await api.status(sessionId, signal)
             if (controller.signal.aborted) return
             const parsed = response?.ok ? statusResult.safeParse(response.value) : null
             if (!parsed?.success || parsed.data.sessionId !== sessionId || parsed.data.status === 'unavailable') throw new Error('Unavailable')
@@ -295,8 +294,8 @@ export function createClientPlugin(React, z, createRemoteContribution, graphPres
         }
         void refreshStatus()
         return () => { controller.abort(); clearTimeout(timer) }
-      }, [canRead, opened, running, sessionId, refreshCount])
-      if (!canRead || !opened || result?.sessionId !== sessionId || !result.graph) return null
+      }, [opened, running, sessionId, refreshCount])
+      if (!opened || result?.sessionId !== sessionId || !result.graph) return null
       return h(GraphPanel, { key: sessionId, graph: result.graph, t, busy: result.busy, failed: result.failed, refresh })
     }
   }

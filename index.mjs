@@ -13,7 +13,7 @@ import { FileGraphStore } from './store.mjs'
 
 export const name = 'dsh-bettertaskgraphs'
 let bindSessionResource
-Remote({ resources: { session: ({ sessionId }) => sessionId } })(undefined, {
+Remote('status')(undefined, {
   kind: 'method', name: 'status', addInitializer: callback => { bindSessionResource = callback },
 })
 const guidance = 'For work the user asks to track in a transaction graph, read the program-generated revision and choices before creating or resuming it. One leaf may be active. Begin must commit before work starts. Pending or UNKNOWN work blocks finish and dependent work. Never replay blindly. Complete requires a qualified successful tool result after begin. Incomplete requires known failure, confirmed non-execution, or an unsatisfied outcome. Wait for the enclosing tool call to finish and read the committed state before continuing. Containers aggregate. Transaction completion does not complete Goal.'
@@ -43,7 +43,7 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
         text: ({ agent }) => this.host.inProject(agent?.session) && this.sessionPolicies.allowClassic(agent) ? this.host.context(agent) : '' })
     ctx.inject(['typert', 'sessionController'], remoteCtx => {
       const typert = remoteCtx.typert
-      if (typert.resources.get('session')?.field !== 'sessionId') throw new Error('Transaction graph requires the native Session RPC resource')
+      if (typert.lookups.get('session')?.wire !== 'sessionId') throw new Error('Transaction graph requires the native Session RPC lookup')
       const contribution = createRemoteContribution(z)
       remoteCtx.effect(() => typert.register({ package: contribution.package, face: 'host', schemas: [],
         model: { services: [], events: [], objects: [] }, invocations: contribution.descriptors }))
@@ -64,14 +64,10 @@ export default class TransactionGraphPlugin extends TypertRemoteService {
     })
     ctx.effect(() => () => { this.workflows.close(); this.sessionPolicies.close(); return this.host.close() })
   }
-  async status({ sessionId }, signal) {
+  async status(session, signal) {
     signal?.throwIfAborted()
-    const controller = this.ctx.get('sessionController')
-    if (!controller) throw new RemoteError('session/not-found', 'Session controller unavailable', { sessionId })
-    const result = await controller.resolveAgent(sessionId)
-    if (result.error) throw result.error
-    signal?.throwIfAborted()
-    return this.host.snapshot(result.agent.session)
+    if (!this.host.inProject(session)) throw new RemoteError('session/not-found', 'Session unavailable')
+    return this.host.snapshot(session)
   }
   registerRecoveryVerifier(adapter) { return this.host.registerRecoveryVerifier(adapter) }
   recoverInterrupted(agent, request) { return this.host.recoverInterrupted(agent, request) }

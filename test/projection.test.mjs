@@ -157,3 +157,24 @@ test('every own UNKNOWN root enters the independent ledger, regardless of admini
     assert.equal(state.uncertainties[0].rootCallId, 'root')
   }
 })
+
+test('legacy Bash foreground failures and background acknowledgements do not qualify as completion proof', () => {
+  for (const [text, qualification] of [['output\n[exit code: 7]', 'FAILED'],
+    ['output\n[killed by signal: SIGTERM]', 'FAILED'], ['output\n[timed out after 50ms]', 'FAILED'],
+    ['output\n[sandbox: file access denied under workspace-write mode]', 'FAILED'],
+    ['started background job fixture', 'UNKNOWN'],
+    ['output with an ordinary [exit code: 7] string', 'SUCCESS']]) {
+    for (const nested of [false, true]) {
+      let state = initialState({ id: 'own' })
+      const add = (type, data) => { state = applyEvent(state, { seq: state.lastSeq + 1, type, data }) }
+      const content = [{ type: 'text', text }]
+      add('tool/call', { callId: 'root', name: nested ? 'run_code' : 'bash' })
+      if (nested) add('tool/ptc-dispatch', { subCallId: 'child', parentCallId: 'root',
+        rootCallId: 'root', name: 'bash', isError: false, content })
+      add('tool/result', { message: { source: { callId: 'root' }, isError: false,
+        content: nested ? [{ type: 'text', text: 'Program returned normally.' }] : content } })
+      assert.equal(state.failure, null)
+      assert.equal(state.proofs[0].qualification, qualification, text)
+    }
+  }
+})
