@@ -1,3 +1,13 @@
+# 0.3.1-rc.30 — DSH compatibility line
+
+- Pin this build to its listed DSH releases and pair it with the other plugin on RC slot 0.
+- Use the native Session plugin record API.
+
+# 0.3.0-rc.13 — DSH 0.2.2-rc.3 compatibility (2026-11-14)
+
+- Pin DSH peers and Node requirements to the host branch and rebuild the Web client.
+- Preserve standalone task graph tools and the workflow extension contract.
+
 # 0.3.0-rc.11 — independent base and generic extension ports (2026-11-13)
 
 - Restore the 0.2.3 standalone five-tool guidance and work protocol; restore the 16 MiB artifact default.
