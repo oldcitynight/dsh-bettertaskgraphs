@@ -28,7 +28,7 @@ const graph = {
 test('the shared RPC admits one strict, cancellable read and rejects private fields', () => {
   const contribution = createRemoteContribution(z)
   const [endpoint] = contribution.descriptors
-  assert.equal(contribution.package, 'dsh-bettertaskgraphs')
+  assert.equal(contribution.package, 'dsh-better-task-grapth')
   assert.equal(contribution.descriptors.length, 1)
   assert.equal(endpoint.service, 'transactionGraph')
   assert.equal(endpoint.namespace + '/' + endpoint.method, 'transactionGraphView/status')
@@ -142,7 +142,7 @@ test('generated bundle registers the graph in the existing session composer dock
   let plugin
   vm.runInNewContext(source, {
     window: { __ModuleLoader__: { load(row) {
-      assert.equal(row.id, 'dsh-bettertaskgraphs')
+      assert.equal(row.id, 'dsh-better-task-grapth')
       plugin = row.factory(name => ({ react: {}, zod: { z } })[name])
     } } },
   })
