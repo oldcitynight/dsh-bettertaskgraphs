@@ -1,3 +1,7 @@
+# 0.3.1-rc.42
+
+- npm 包、Bundle 名称和 GitHub 仓库更名为 `dsh-better-task-grapth`。
+
 # 0.3.1-rc.32 — DSH compatibility line
 
 - Pin this build to its listed DSH releases and pair it with the other plugin on RC slot 2.
