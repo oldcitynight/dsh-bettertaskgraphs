@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updateRound": 3,
+  "updateRound": 4,
   "slot": 0,
   "branch": "main",
   "host": "0.2.2-rc.3",
@@ -9,6 +9,6 @@
     "0.2.2-rc.2"
   ],
   "channel": "next",
-  "taskgraph": "0.3.1-rc.30",
-  "dynamicContext": "0.1.1-rc.30"
+  "taskgraph": "0.3.1-rc.40",
+  "dynamicContext": "0.1.1-rc.40"
 }

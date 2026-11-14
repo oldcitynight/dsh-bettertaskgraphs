@@ -1,6 +1,6 @@
 {
-  "name": "dsh-bettertaskgraphs",
-  "version": "0.3.1-rc.30",
+  "name": "dsh-better-task-grapth",
+  "version": "0.3.1-rc.40",
   "description": "Transactional task graphs with a conversation panel for DeepSeek Harness",
   "license": "GPL-3.0-only",
   "keywords": [
@@ -9,13 +9,13 @@
     "cordis",
     "task-graph"
   ],
-  "homepage": "https://github.com/oldcitynight/dsh-bettertaskgraphs#readme",
+  "homepage": "https://github.com/oldcitynight/dsh-better-task-grapth#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/oldcitynight/dsh-bettertaskgraphs.git"
+    "url": "git+https://github.com/oldcitynight/dsh-better-task-grapth.git"
   },
   "bugs": {
-    "url": "https://github.com/oldcitynight/dsh-bettertaskgraphs/issues"
+    "url": "https://github.com/oldcitynight/dsh-better-task-grapth/issues"
   },
   "type": "module",
   "main": "./index.mjs",
