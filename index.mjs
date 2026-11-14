@@ -11,7 +11,7 @@ import { WorkflowRegistry, WORKFLOW_CONTRACT } from './interop.mjs'
 import { EXTENSION_CONTRACT, SessionPolicies } from './extensions.mjs'
 import { FileGraphStore } from './store.mjs'
 
-export const name = 'dsh-bettertaskgraphs'
+export const name = 'dsh-better-task-grapth'
 let bindSessionResource
 Remote({ resources: { session: ({ sessionId }) => sessionId } })(undefined, {
   kind: 'method', name: 'status', addInitializer: callback => { bindSessionResource = callback },
