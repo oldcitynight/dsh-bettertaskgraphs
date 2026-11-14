@@ -1,6 +1,8 @@
 # dsh-bettertaskgraphs
 
-当前候选版本为 `0.3.0-rc.11`。独立运行保留动态上下文开发前 `0.2.3` 的五个工具、初始指引与事务语义；通用扩展接口供其他插件登记工作流和会话策略。动态上下文装配、修改审批及其提示词由扩展插件实现。
+本构建版本为 `0.3.1-rc.32`。适用宿主和配套版本见 [兼容清单](DSH-COMPATIBILITY.json)。
+
+独立运行保留动态上下文开发前 `0.2.3` 的五个工具、初始指引与事务语义；通用扩展接口供其他插件登记工作流和会话策略。动态上下文装配、修改审批及其提示词由扩展插件实现。
 
 配套扩展：[dsh-dynamic-context](https://github.com/oldcitynight/dsh-dynamic-context)。本候选的验证范围与复现方式见 [VALIDATION.md](VALIDATION.md)。
 
@@ -10,7 +12,9 @@ DeepSeek Harness 的事务型任务图 Bundle，包含模型侧的任务图工�
 
 ## 兼容范围
 
-- DSH `0.2.1-rc.5`，使用 Web profile。
+分支 `0.2.1-rc.5` 采用 npm 标签 `dsh-0.2.1-rc.5`。配套动态上下文版本为 `0.1.1-rc.32`。
+
+- DSH `0.2.1-rc.5`、`0.2.1-rc.4`、`0.2.1-rc.3`、`0.2.1-rc.2`、`0.2.1-rc.1`、`0.2.1-alpha.5`，使用 Web profile。
 - Node.js `^22.19.0 || >=24.0.0`，开发用 npm。此包与 DSH 共享会话、工具和远程调用接口，升级 DSH 时需要重新验证这些接口。
 
 ## 构建和打包
@@ -22,7 +26,7 @@ npm test
 npm run pack:bundle
 ```
 
-`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.3.0-rc.11.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
+`build` 从前端源码生成可由 DSH Web 加载的 `client.js`。`check` 校验生成物与源码一致，`pack:bundle` 会重新构建前端并生成 `dist/dsh-bettertaskgraphs-0.3.1-rc.32.tgz`。包内包含服务端模块、Web 构建产物、对应源码和构建脚本，以及 Bundle 配置补丁。
 
 ## 安装到独立 Web profile
 
@@ -30,7 +34,7 @@ npm run pack:bundle
 
 ```sh
 dsh --profile bettertaskgraphs --from-default-profile web --dump-config
-dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.3.0-rc.11.tgz"
+dsh plugin --profile bettertaskgraphs add "$PWD/dist/dsh-bettertaskgraphs-0.3.1-rc.32.tgz"
 dsh --profile bettertaskgraphs --dump-config
 dsh --profile bettertaskgraphs
 ```
