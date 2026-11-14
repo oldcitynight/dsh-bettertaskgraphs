@@ -55,7 +55,7 @@ function fixture(t, { useSessionWorkspace = false } = {}) {
     } },
     workingDirectory: { get: () => cwd, ensure: async () => cwd },
     sessionProjections: { stateOf: (_session, key) => key === KEY ? state : undefined },
-    get: () => undefined, tools: { get: name => definitions.get(name) }, logger: { warn() {} } }
+    get: key => key === 'workingDirectory' ? ctx.workingDirectory : undefined, tools: { get: name => definitions.get(name) }, logger: { warn() {} } }
   function append(type, data) {
     const event = { seq: events.length, type, data, time: 100 + events.length }
     events.push(event); state = applyEvent(state, event); return event.seq
