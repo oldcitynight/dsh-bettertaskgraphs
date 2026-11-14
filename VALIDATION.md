@@ -1,4 +1,4 @@
-# Candidate 0.3.1-rc.31
+# Candidate 0.3.1-rc.41
 
 See [the compatibility manifest](DSH-COMPATIBILITY.json) for the exact host versions and package pairing.
 
