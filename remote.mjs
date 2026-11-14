@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Shared by the Host registration and the lazy browser module.
 export function createRemoteContribution(z) {
-  const packageName = 'dsh-bettertaskgraphs'
+  const packageName = 'dsh-better-task-grapth'
   const id = z.string().min(1).max(128)
   const node = z.object({
     id, label: z.string().min(1).max(512), kind: z.enum(['container', 'leaf']),
